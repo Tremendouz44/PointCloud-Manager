@@ -170,12 +170,10 @@
   <div class="content">
     <div class="table-wrap">
       <table>
-        <colgroup><col style="width:24%"><col style="width:18%"><col style="width:18%"><col style="width:15%"><col style="width:25%"></colgroup>
+        <colgroup><col style="width:30%"><col style="width:25%"><col style="width:45%"></colgroup>
         <thead><tr>
           <th data-key="name">Name</th>
           <th data-key="folder">Folder</th>
-          <th data-key="uploader">Uploader</th>
-          <th data-key="date">Upload date</th>
           <th data-key="url">URL</th>
         </tr></thead>
         <tbody id="rows"></tbody>
@@ -206,6 +204,8 @@
           <dt>Folder</dt><dd id="dFolder"></dd>
           <dt>Uploader</dt><dd id="dUploader"></dd>
           <dt>Upload date</dt><dd id="dDate"></dd>
+          <dt>Last modified</dt><dd id="dModified"></dd>
+          <dt>Modified by</dt><dd id="dModifiedBy"></dd>
           <dt><label for="eUrl">URL</label></dt><dd><textarea id="eUrl" class="field url-field" rows="3" autocomplete="off"></textarea></dd>
         </dl>
       </div>
@@ -469,7 +469,8 @@ async function scanProject() {
           next.push(id);
         } else if (/\.purl$/i.test(name)) {
           found.push({ id, name: name.replace(/\.purl$/i, ""), folderId: fid,
-                       uploader: it.createdBy?.email || "", date: it.createdOn || "", url: "", urlState: "loading" });
+                       uploader: it.createdBy?.email || "", date: it.createdOn || "",
+                       modifiedBy: it.modifiedBy?.email || "", modified: it.modifiedOn || "", url: "", urlState: "loading" });
         }
       }
     });
@@ -482,8 +483,7 @@ async function scanProject() {
 async function loadDetails(c) {
   try {
     const f = (await tc(`/files/${enc(c.id)}`)).json || {};
-    c.uploader = f.createdBy?.email || c.uploader;
-    c.date = f.createdOn || c.date;
+    applyFileInfo(c, f);
   } catch { /* keep listing data */ }
   try {
     const d = await tc(`/files/fs/${enc(c.id)}/downloadurl`);
@@ -554,6 +554,14 @@ function fmtDate(s) {
   return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }) + " " +
          d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
+function applyFileInfo(c, f) {
+  c.uploader = f.createdBy?.email || c.uploader;
+  c.date = f.createdOn || c.date;
+  c.modifiedBy = f.modifiedBy?.email || c.modifiedBy || "";
+  c.modified = f.modifiedOn || c.modified || "";
+}
+// a file that was never renamed, moved or given a new URL has modifiedOn = createdOn
+const wasModified = c => !!c.modified && Math.abs(new Date(c.modified) - new Date(c.date)) > 5000;
 const urlCell = c => c.urlState === "ok" ? c.url : c.urlState === "loading" ? "Loading…" : "Could not be read";
 function sortValue(c) {
   switch (sortKey) {
@@ -577,8 +585,6 @@ function render() {
     <tr data-id="${esc(c.id)}" class="${c.id === selectedId ? "sel" : ""}">
       <td class="name" title="${esc(c.name)}"><div class="cell">${CLOUD_ICON}<span>${esc(c.name)}</span></div></td>
       <td title="${esc(folderPath(c.folderId))}">${esc(folderPath(c.folderId))}</td>
-      <td title="${esc(c.uploader)}">${esc(c.uploader)}</td>
-      <td>${esc(fmtDate(c.date))}</td>
       <td class="${c.urlState === "ok" ? "" : "muted"}" title="${esc(urlCell(c))}">${esc(urlCell(c))}</td>
     </tr>`).join("");
 
@@ -656,6 +662,9 @@ function fillPanel(force = false) {
   $("dFolder").textContent = folderPath(c.folderId);
   $("dUploader").textContent = c.uploader || "—";
   $("dDate").textContent = fmtDate(c.date) || "—";
+  const changed = wasModified(c);
+  $("dModified").textContent = changed ? fmtDate(c.modified) : "—";
+  $("dModifiedBy").textContent = changed ? (c.modifiedBy || "—") : "—";
   const url = c.urlState === "ok" ? c.url : "";
   if (force || edit.id !== c.id) {
     edit = { id: c.id, name: c.name, url };
@@ -751,6 +760,10 @@ $("pSave").onclick = async () => {
       c.name = name; edit.name = name;
     }
     if (noteChanged) await saveNote(c.id, text);
+    if (urlChanged || nameChanged) {
+      try { applyFileInfo(c, (await tc(`/files/${enc(c.id)}`)).json || {}); }
+      catch { c.modified = new Date().toISOString(); c.modifiedBy = me?.email || ""; }
+    }
     $("eName").value = edit.name; $("eUrl").value = edit.url; $("pNote").value = note.text;
     saveMsg = "Saved";
   } catch (e) {
@@ -891,11 +904,10 @@ $("aAdd").onclick = async () => {
     }
 
     const fileId = await uploadPurl(folderId, name + ".purl", url);
-    const c = { id: fileId, name, folderId, uploader: me?.email || "", date: new Date().toISOString(), url, urlState: "ok" };
+    const c = { id: fileId, name, folderId, uploader: me?.email || "", date: new Date().toISOString(), modified: "", modifiedBy: "", url, urlState: "ok" };
     try {
       const f = (await tc(`/files/${enc(fileId)}`)).json || {};
-      c.uploader = f.createdBy?.email || c.uploader;
-      c.date = f.createdOn || c.date;
+      applyFileInfo(c, f);
     } catch { /* keep local values */ }
     clouds.push(c);
     closeDialog("dlgAdd");

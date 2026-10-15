@@ -500,7 +500,7 @@ async function start() {
   }
   try {
     try {
-      await api.ui.setMenu({ title: "PointCloud Manager", icon: new URL("icon.png?v=1", location.href).href, command: "pcm_open" });
+      await api.ui.setMenu({ title: "PointCloud Manager", icon: new URL("icon.png", location.href).href, command: "pcm_open" });
     } catch { /* optional */ }
 
     loading("Waiting for access permission…");

@@ -2,7 +2,7 @@
   "title": "PointCloud Manager",
   "description": "Pin point cloud scans (.purl) to the project by URL and manage them. Project administrators only.",
   "url": "https://tremendouz44.github.io/PointCloud-Manager/",
-  "icon": "https://tremendouz44.github.io/PointCloud-Manager/icon.png?v=1",
+  "icon": "https://tremendouz44.github.io/PointCloud-Manager/icon.png",
   "enabled": true,
   "extensionType": ["project"]
 }

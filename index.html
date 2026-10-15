@@ -72,7 +72,10 @@
   .p-head h2 { flex: 1; margin: 6px 0 0; font-size: 18px; font-weight: 600; word-break: break-word; }
   .p-preview { height: 170px; background: #eceef3; display: grid; place-items: center; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .p-preview svg { width: 92px; height: 92px; fill: #a3a6b1; }
-  .p-actions { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .p-actions { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-view { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 18px; border-radius: 8px; border: 1px solid #585c65; background: #585c65; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .btn-view:hover { background: #464b52; border-color: #464b52; }
+  .btn-view:active { background: #353a40; }
   .btn-danger { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 18px; border-radius: 8px; border: 1px solid var(--red); background: var(--red); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
   .btn-danger:hover { background: var(--red-hover); border-color: var(--red-hover); }
   .btn-danger:active { background: var(--red-press); }
@@ -193,6 +196,10 @@
         <svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96Z"/></svg>
       </div>
       <div class="p-actions">
+        <button id="pView" class="btn-view" type="button">
+          <svg class="i" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5ZM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10Zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+          View in 3D
+        </button>
         <button id="pRemove" class="btn-danger" type="button">
           <svg class="i" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12ZM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4Z"/></svg>
           Remove
@@ -772,6 +779,18 @@ $("pSave").onclick = async () => {
     saving = false;
     render();
     updateSaveState();
+  }
+};
+
+/* ---- view in 3D: open the 3D Viewer with this .purl loaded ---- */
+$("pView").onclick = async () => {
+  const c = selected();
+  if (!c) return;
+  try {
+    const ok = await api.extension.goTo("3dviewer", { projectId: project.id, modelId: c.id });
+    if (ok === false) toast("The 3D Viewer could not be opened.", true);
+  } catch (e) {
+    toast("The 3D Viewer could not be opened: " + errText(e), true);
   }
 };
 

@@ -1,0 +1,856 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PointCloud Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Colours follow Trimble Modus (the design system Trimble Connect uses). */
+  :root {
+    --blue: #0063a3; --blue-hover: #217cbb; --blue-press: #004f83; --blue-tint: #e0eefa;
+    --text: #252a2e; --text-2: #464b52; --text-3: #6a6e79;
+    --line: #e0e1e9; --line-2: #cbcdd6;
+    --bg: #f1f1f6; --white: #ffffff; --head: #f9f9fb;
+    --selected: #dcedf9; --hover: #f5f5f9;
+    --red: #da212c; --red-hover: #b51d25; --red-press: #8f171d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font-family: "Open Sans", Arial, sans-serif; font-size: 14px; color: var(--text); background: var(--bg); }
+  .hidden { display: none !important; }
+  button { font-family: inherit; }
+  svg.i { width: 20px; height: 20px; fill: currentColor; flex: none; }
+
+  /* ---------- states ---------- */
+  .screen { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; color: var(--text-2); }
+  .screen h2 { margin: 0; font-size: 20px; font-weight: 400; color: var(--text); }
+  .screen p { margin: 0; max-width: 460px; line-height: 1.5; }
+  .screen .detail { font-size: 12px; color: var(--text-3); }
+  .screen svg.big { width: 64px; height: 64px; fill: #9a9da6; }
+  .spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--blue); animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- page ---------- */
+  #screenMain { height: 100vh; display: flex; flex-direction: column; padding: 20px 16px 16px; }
+  .page-head { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
+  .page-head h1 { margin: 0; font-size: 22px; font-weight: 400; color: var(--text); }
+  .link-btn { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; color: var(--blue); font-size: 14px; font-weight: 600; padding: 8px 10px; border-radius: 4px; cursor: pointer; }
+  .link-btn:hover { background: var(--blue-tint); }
+  .link-btn:active { color: var(--blue-press); }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; height: 52px; }
+  .count { color: var(--text-3); font-size: 13px; }
+  .search { display: flex; align-items: center; gap: 4px; }
+  .search input { width: 0; opacity: 0; padding: 0; border: 1px solid transparent; height: 36px; font: inherit; color: var(--text); background: var(--white); transition: width .2s, opacity .2s; }
+  .search.open input { width: 260px; opacity: 1; padding: 0 10px; border-color: var(--line-2); border-bottom-color: var(--text-3); }
+  .search input:focus { outline: none; border-bottom: 2px solid var(--blue); }
+  .icon-btn { width: 36px; height: 36px; border: 0; background: none; border-radius: 50%; display: grid; place-items: center; color: var(--text); cursor: pointer; }
+  .icon-btn:hover { background: var(--line); }
+
+  .content { flex: 1; min-height: 0; display: flex; gap: 12px; }
+  .table-wrap { flex: 1; min-width: 0; overflow: auto; background: var(--white); }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th { position: sticky; top: 0; z-index: 1; background: var(--head); height: 54px; padding: 0 16px; text-align: left; font-weight: 600; color: var(--text-3); border-bottom: 1px solid var(--line-2); cursor: pointer; user-select: none; white-space: nowrap; }
+  th.active { color: var(--text); }
+  th .arr { display: inline-block; margin-left: 6px; font-size: 13px; }
+  td { height: 64px; padding: 0 16px; border-bottom: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover td { background: var(--hover); }
+  tbody tr.sel td { background: var(--selected); }
+  td.name { font-weight: 600; }
+  td.name .cell { display: flex; align-items: center; gap: 14px; overflow: hidden; }
+  td.name .cell span { overflow: hidden; text-overflow: ellipsis; }
+  td.name svg { width: 30px; height: 30px; fill: #3d4148; }
+  td.muted { color: var(--text-3); font-style: italic; }
+  .empty { padding: 48px 24px; text-align: center; color: var(--text-3); }
+
+  /* ---------- details panel ---------- */
+  #panel { width: 340px; flex: none; background: var(--white); overflow: auto; display: flex; flex-direction: column; }
+  .p-head { display: flex; align-items: flex-start; gap: 8px; padding: 16px 12px 14px 16px; }
+  .p-head h2 { flex: 1; margin: 6px 0 0; font-size: 18px; font-weight: 600; word-break: break-word; }
+  .p-preview { height: 170px; background: #eceef3; display: grid; place-items: center; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .p-preview svg { width: 92px; height: 92px; fill: #a3a6b1; }
+  .p-actions { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .btn-danger { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 18px; border-radius: 8px; border: 1px solid var(--red); background: var(--red); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .btn-danger:hover { background: var(--red-hover); border-color: var(--red-hover); }
+  .btn-danger:active { background: var(--red-press); }
+  .btn-danger:disabled { opacity: .6; cursor: default; }
+  .p-section { padding: 16px; }
+  .p-section + .p-section { border-top: 1px solid var(--line); }
+  .p-section h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  dl { margin: 0; }
+  dt { margin-top: 14px; font-size: 12px; color: var(--text-3); }
+  dd { margin: 3px 0 0; font-size: 14px; word-break: break-word; }
+  dd.url { word-break: break-all; }
+  textarea { width: 100%; min-height: 110px; resize: vertical; margin-top: 10px; padding: 8px 10px; font: inherit; color: var(--text); background: var(--white); border: 1px solid var(--line-2); border-bottom-color: var(--text-3); }
+  textarea:focus { outline: none; border-bottom: 2px solid var(--blue); }
+  textarea:disabled { background: var(--hover); }
+  .note-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+  .note-status { font-size: 12px; color: var(--text-3); }
+
+  /* ---------- buttons, dialogs ---------- */
+  .btn-primary, .btn-secondary { height: 38px; padding: 0 20px; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-primary { border: 1px solid var(--blue); background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-hover); border-color: var(--blue-hover); }
+  .btn-primary:active { background: var(--blue-press); }
+  .btn-primary:disabled { opacity: .55; cursor: default; }
+  .btn-secondary { border: 1px solid var(--blue); background: var(--white); color: var(--blue); }
+  .btn-secondary:hover { background: var(--blue-tint); }
+  .btn-sm { height: 32px; padding: 0 14px; }
+
+  .overlay { position: fixed; inset: 0; z-index: 10; background: rgba(37,42,46,.45); display: grid; place-items: center; padding: 16px; }
+  .modal { width: 480px; max-width: 100%; max-height: calc(100vh - 32px); overflow: auto; background: #f6f6f9; border-radius: 4px; padding: 22px 26px 22px; box-shadow: 0 8px 28px rgba(0,0,0,.25); }
+  .m-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .m-head h2 { margin: 0; font-size: 22px; font-weight: 600; }
+  .modal label { display: block; margin: 14px 0 5px; font-size: 12px; color: var(--text-2); }
+  .modal input[type=text] { width: 100%; height: 40px; padding: 0 10px; font: inherit; color: var(--text); background: var(--white); border: 1px solid var(--line-2); border-bottom-color: var(--text-3); }
+  .modal input[type=text]:focus { outline: none; border-bottom: 2px solid var(--blue); }
+  .modal p { margin: 10px 0 0; line-height: 1.5; color: var(--text-2); }
+  .tree { height: 210px; overflow: auto; background: var(--white); border: 1px solid var(--line-2); padding: 4px 0; }
+  .t-row { display: flex; align-items: center; gap: 4px; height: 32px; padding-right: 8px; cursor: pointer; white-space: nowrap; }
+  .t-row:hover { background: var(--hover); }
+  .t-row.sel { background: var(--selected); font-weight: 600; }
+  .t-tog { width: 22px; height: 22px; display: grid; place-items: center; border: 0; background: none; padding: 0; cursor: pointer; color: var(--text-2); }
+  .t-tog svg { width: 18px; height: 18px; fill: currentColor; transition: transform .15s; }
+  .t-tog.open svg { transform: rotate(90deg); }
+  .t-tog.none { visibility: hidden; }
+  .t-row svg.fold { width: 18px; height: 18px; fill: #3d4148; margin-right: 4px; }
+  .t-new { font-size: 11px; font-weight: 600; color: var(--blue); background: var(--blue-tint); border-radius: 3px; padding: 1px 6px; margin-left: 6px; }
+  .form-error { min-height: 20px; margin-top: 10px; font-size: 13px; color: var(--red); }
+  .m-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; padding-top: 16px; border-top: 1px solid var(--line-2); }
+
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 20; max-width: min(640px, calc(100vw - 32px)); display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px 12px 16px; border-radius: 4px; background: var(--text); color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.25); line-height: 1.45; }
+  .toast.error { background: #fff; color: var(--text); border-left: 4px solid var(--red); }
+  .toast .msg { flex: 1; word-break: break-word; white-space: pre-line; }
+  .toast button { background: none; border: 0; color: inherit; cursor: pointer; padding: 0; opacity: .7; }
+</style>
+</head>
+<body>
+
+<!-- loading -->
+<div id="screenLoading" class="screen">
+  <div class="spinner"></div>
+  <p id="loadText">Connecting to Trimble Connect…</p>
+</div>
+
+<!-- message screen (not admin / error) -->
+<div id="screenMsg" class="screen hidden">
+  <svg class="big" viewBox="0 0 24 24"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4Zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8Z"/></svg>
+  <h2 id="msgTitle"></h2>
+  <p id="msgText"></p>
+  <p id="msgDetail" class="detail"></p>
+</div>
+
+<!-- main -->
+<div id="screenMain" class="hidden">
+  <div class="page-head">
+    <h1>PointCloud Manager</h1>
+    <button id="btnAdd" class="link-btn" type="button">
+      <svg class="i" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2Z"/></svg>
+      Add PointCloud
+    </button>
+  </div>
+  <div class="toolbar">
+    <span id="count" class="count"></span>
+    <div id="search" class="search">
+      <input id="searchInput" type="text" placeholder="Search point clouds" autocomplete="off">
+      <button id="btnSearch" class="icon-btn" type="button" title="Search">
+        <svg class="i" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5Zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14Z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="table-wrap">
+      <table>
+        <colgroup><col style="width:24%"><col style="width:18%"><col style="width:18%"><col style="width:15%"><col style="width:25%"></colgroup>
+        <thead><tr>
+          <th data-key="name">Name</th>
+          <th data-key="folder">Folder</th>
+          <th data-key="uploader">Uploader</th>
+          <th data-key="date">Upload date</th>
+          <th data-key="url">URL</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="empty" class="empty hidden"></div>
+    </div>
+
+    <aside id="panel" class="hidden">
+      <div class="p-head">
+        <h2 id="pName"></h2>
+        <button id="pClose" class="icon-btn" type="button" title="Close">
+          <svg class="i" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+        </button>
+      </div>
+      <div class="p-preview">
+        <svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96Z"/></svg>
+      </div>
+      <div class="p-actions">
+        <button id="pRemove" class="btn-danger" type="button">
+          <svg class="i" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12ZM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4Z"/></svg>
+          Remove
+        </button>
+      </div>
+      <div class="p-section">
+        <h3>Details</h3>
+        <dl>
+          <dt>Name</dt><dd id="dName"></dd>
+          <dt>Folder</dt><dd id="dFolder"></dd>
+          <dt>Uploader</dt><dd id="dUploader"></dd>
+          <dt>Upload date</dt><dd id="dDate"></dd>
+          <dt>URL</dt><dd id="dUrl" class="url"></dd>
+        </dl>
+      </div>
+      <div class="p-section">
+        <h3>Note</h3>
+        <textarea id="pNote" placeholder="Add a note…" disabled></textarea>
+        <div class="note-row">
+          <span id="noteStatus" class="note-status"></span>
+          <button id="pNoteSave" class="btn-primary btn-sm" type="button" disabled>Save</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- Add dialog -->
+<div id="dlgAdd" class="overlay hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+    <div class="m-head">
+      <h2 id="addTitle">Add PointCloud</h2>
+      <button class="icon-btn" type="button" data-close="dlgAdd" title="Close">
+        <svg class="i" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+      </button>
+    </div>
+    <label for="aName">Name</label>
+    <input id="aName" type="text" autocomplete="off" placeholder="Point cloud name">
+    <label for="aUrl">URL</label>
+    <input id="aUrl" type="text" autocomplete="off" placeholder="https://">
+    <label>Folder</label>
+    <div id="aTree" class="tree"></div>
+    <div id="aError" class="form-error"></div>
+    <div class="m-foot">
+      <button class="btn-secondary" type="button" data-close="dlgAdd">Cancel</button>
+      <button id="aAdd" class="btn-primary" type="button">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Remove dialog -->
+<div id="dlgRemove" class="overlay hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="rmTitle">
+    <div class="m-head">
+      <h2 id="rmTitle">Remove PointCloud</h2>
+      <button class="icon-btn" type="button" data-close="dlgRemove" title="Close">
+        <svg class="i" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+      </button>
+    </div>
+    <p id="rmText"></p>
+    <p>The point cloud data on the server is not affected.</p>
+    <div class="m-foot">
+      <button class="btn-secondary" type="button" data-close="dlgRemove">Cancel</button>
+      <button id="rmOk" class="btn-danger" type="button">Remove</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden">
+  <span class="msg" id="toastMsg"></span>
+  <button id="toastClose" type="button" title="Close">✕</button>
+</div>
+
+<script type="module">
+import * as TCW from "https://esm.run/trimble-connect-workspace-api";
+
+/* =====================================================================
+   SETTINGS
+   ===================================================================== */
+const DEFAULT_FOLDER = "Point Clouds";          // pre-selected in Add dialog
+const NOTE_PREFIX    = "[PointCloud Manager] "; // marks our note comment on the file
+const HOSTS = {                                  // project.location -> Core API host
+  northamerica:  "https://app.connect.trimble.com",
+  europe:        "https://app21.connect.trimble.com",
+  unitedkingdom: "https://app22.connect.trimble.com",
+  asia:          "https://app31.connect.trimble.com",
+  australia:     "https://app32.connect.trimble.com",
+};
+const MASTER = "https://app.connect.trimble.com/tc/api/2.0";
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+let api = null, project = null, me = null, API = "", API21 = "";
+let token = null, tokenPromise = null, tokenWaiters = [];
+let rootId = null;
+const folders = new Map();      // id -> { id, name, parentId, path }
+let clouds = [];                // { id, name, folderId, uploader, date, url, urlState }
+let selectedId = null;
+let sortKey = "name", sortDir = 1, query = "";
+let note = { fileId: null, commentId: null, text: "" };
+
+const $ = id => document.getElementById(id);
+const enc = encodeURIComponent;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* =====================================================================
+   SCREENS + TOAST
+   ===================================================================== */
+function show(screen) {
+  for (const id of ["screenLoading", "screenMsg", "screenMain"]) $(id).classList.toggle("hidden", id !== screen);
+}
+function loading(text) { $("loadText").textContent = text; }
+function message(title, text, detail = "") {
+  $("msgTitle").textContent = title; $("msgText").textContent = text; $("msgDetail").textContent = detail;
+  show("screenMsg");
+}
+let toastTimer = null;
+function toast(text, isError = false) {
+  $("toastMsg").textContent = text;
+  $("toast").classList.toggle("error", isError);
+  $("toast").classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.add("hidden"), isError ? 12000 : 4000);
+}
+$("toastClose").onclick = () => $("toast").classList.add("hidden");
+
+class ApiError extends Error {
+  constructor(status, what, body) {
+    let m = "";
+    try { const j = JSON.parse(body); m = j.message || j.errorcode || j.error || ""; } catch { m = (body || "").slice(0, 200); }
+    super(`${what} failed (HTTP ${status})${m ? ": " + m : ""}`);
+    this.status = status;
+  }
+}
+const errText = e => (e && e.message) ? e.message : String(e);
+
+/* =====================================================================
+   ACCESS TOKEN (Workspace API)
+   ===================================================================== */
+const isToken = t => typeof t === "string" && t.length > 20 && t !== "pending" && t !== "denied";
+
+function onEvent(event, args) {
+  if (event === "extension.accessToken") {
+    const t = typeof args?.data === "string" ? args.data : (typeof args === "string" ? args : "");
+    if (isToken(t)) { token = t; tokenWaiters.splice(0).forEach(w => w.ok(t)); }
+  }
+}
+
+function getToken() {
+  if (token) return Promise.resolve(token);
+  if (!tokenPromise) {
+    tokenPromise = (async () => {
+      const r = await api.extension.requestPermission("accesstoken");
+      if (r === "denied") throw new Error("Access to Trimble Connect data was denied. Reopen PointCloud Manager and allow access.");
+      if (isToken(r)) { token = r; return r; }
+      if (token) return token;   // arrived through the event meanwhile
+      return await new Promise((ok, fail) => {
+        tokenWaiters.push({ ok });
+        setTimeout(() => fail(new Error("Waiting for permission timed out. Reopen PointCloud Manager and allow access.")), 180000);
+      });
+    })().finally(() => { tokenPromise = null; });
+  }
+  return tokenPromise;
+}
+
+/* =====================================================================
+   CORE REST API
+   ===================================================================== */
+async function tc(path, { method = "GET", body, headers = {} } = {}, retried = false) {
+  const url = path.startsWith("http") ? path : API + path;
+  const h = { Accept: "application/json", Authorization: "Bearer " + await getToken(), ...headers };
+  let payload;
+  if (body !== undefined) { h["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
+  const res = await fetch(url, { method, headers: h, body: payload });
+  if (res.status === 401 && !retried) { token = null; return tc(path, { method, body, headers }, true); }
+  const text = await res.text();
+  if (!res.ok) throw new ApiError(res.status, `${method} ${url.replace(/^https:\/\/[^/]+\/tc\/api\//, "").split("?")[0]}`, text);
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
+  return { status: res.status, headers: res.headers, text, json };
+}
+const listOf = j => Array.isArray(j) ? j : (j?.items || j?.data || []);
+function nextLink(headers) {
+  const link = headers.get("link");
+  if (!link) return null;
+  const part = link.split(",").find(p => /rel="?next"?/i.test(p));
+  const m = part && part.match(/<([^>]+)>/);
+  return m ? m[1] : null;
+}
+
+async function pool(items, n, fn) {
+  let i = 0;
+  const worker = async () => { while (i < items.length) { const it = items[i++]; await fn(it); } };
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
+}
+
+/* ---- region ---- */
+async function resolveHost(location) {
+  const key = String(location || "").toLowerCase().replace(/[^a-z]/g, "");
+  if (HOSTS[key]) return HOSTS[key];
+  try {   // unknown location -> ask the public region list
+    const res = await fetch(MASTER + "/regions");
+    const regions = listOf(await res.json());
+    const hit = regions.find(r => String(r.location || "").toLowerCase().replace(/[^a-z]/g, "") === key);
+    const url = hit && (hit["tc-api"] || Object.values(hit).find(v => typeof v === "string" && v.includes("/tc/api/")));
+    if (url) return new URL(url).origin;
+  } catch { /* fall through */ }
+  return HOSTS.northamerica;
+}
+
+/* ---- role of the signed-in user in this project ---- */
+async function getRole() {
+  let url = API21 + "/projects?fields=role&pageSize=500";
+  for (let page = 0; url && page < 10; page++) {
+    const r = await tc(url);
+    const hit = listOf(r.json).find(p => String(p.id) === project.id);
+    if (hit) return String(hit.role || "").toUpperCase();
+    url = nextLink(r.headers) || r.json?.links?.next?.href || r.json?.next || null;
+  }
+  try {   // fallback: project member list
+    const r = await tc(`/projects/${enc(project.id)}/users`);
+    const m = listOf(r.json).find(u => (me?.id && String(u.id) === String(me.id)) ||
+      (me?.email && String(u.email || "").toLowerCase() === me.email.toLowerCase()));
+    if (m) return String(m.role || "").toUpperCase();
+  } catch { /* ignore */ }
+  return "";
+}
+
+/* ---- folder listing (with paging) ---- */
+async function listItems(folderId) {
+  const out = [];
+  let url = `/folders/${enc(folderId)}/items`, range = null;
+  for (let guard = 0; url && guard < 100; guard++) {
+    const r = await tc(url, range ? { headers: { Range: range } } : {});
+    const page = listOf(r.json);
+    out.push(...page);
+    const link = nextLink(r.headers) || (!Array.isArray(r.json) && (r.json?.next || r.json?.links?.next?.href)) || null;
+    if (link) { url = link; range = null; continue; }
+    const cr = /(\d+)-(\d+)\/(\d+)/.exec(r.headers.get("content-range") || "");
+    if (cr && +cr[2] + 1 < +cr[3] && page.length) {
+      const from = +cr[2] + 1, size = +cr[2] - +cr[1] + 1;
+      range = `items=${from}-${from + size - 1}`;
+    } else url = null;
+  }
+  return out;
+}
+const itemType = it => String(it.type ?? it.tp ?? "").toUpperCase();
+const itemName = it => String(it.name ?? it.nm ?? "");
+
+/* =====================================================================
+   LOAD
+   ===================================================================== */
+async function scanProject() {
+  folders.clear();
+  folders.set(rootId, { id: rootId, name: "/", parentId: null, path: "" });
+  const found = [];
+  let level = [rootId], scanned = 0, failed = 0;
+  while (level.length) {
+    const next = [];
+    await pool(level, 6, async fid => {
+      let items = [];
+      try { items = await listItems(fid); } catch { failed++; }
+      scanned++;
+      loading(`Scanning project folders… ${scanned}`);
+      const parent = folders.get(fid);
+      for (const it of items) {
+        const id = String(it.id ?? ""), name = itemName(it), type = itemType(it);
+        if (!id) continue;
+        if (type === "FOLDER") {
+          folders.set(id, { id, name, parentId: fid, path: parent.path ? parent.path + "/" + name : name });
+          next.push(id);
+        } else if (/\.purl$/i.test(name)) {
+          found.push({ id, name: name.replace(/\.purl$/i, ""), folderId: fid,
+                       uploader: it.createdBy?.email || "", date: it.createdOn || "", url: "", urlState: "loading" });
+        }
+      }
+    });
+    level = next;
+  }
+  if (failed) toast(`${failed} folder(s) could not be read and were skipped.`, true);
+  return found;
+}
+
+async function loadDetails(c) {
+  try {
+    const f = (await tc(`/files/${enc(c.id)}`)).json || {};
+    c.uploader = f.createdBy?.email || c.uploader;
+    c.date = f.createdOn || c.date;
+  } catch { /* keep listing data */ }
+  try {
+    const d = await tc(`/files/fs/${enc(c.id)}/downloadurl`);
+    const link = d.json?.url;
+    if (!link) throw new Error("no download url");
+    const res = await fetch(link);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    c.url = (await res.text()).replace(/^﻿/, "").trim();
+    c.urlState = "ok";
+  } catch {
+    c.urlState = "error";
+  }
+}
+
+async function start() {
+  try {
+    api = await TCW.connect(window.parent, onEvent, 30000);
+  } catch {
+    message("Not connected", "Open PointCloud Manager from a Trimble Connect project.");
+    return;
+  }
+  try {
+    try {
+      await api.ui.setMenu({ title: "PointCloud Manager", icon: new URL("icon.png?v=1", location.href).href, command: "pcm_open" });
+    } catch { /* optional */ }
+
+    loading("Waiting for access permission…");
+    await getToken();
+
+    loading("Reading project…");
+    project = await api.project.getProject();
+    const host = await resolveHost(project.location);
+    API = host + "/tc/api/2.0";
+    API21 = host + "/tc/api/2.1";
+
+    try { me = (await tc("/users/me")).json; } catch { me = null; }
+
+    loading("Checking permissions…");
+    const role = await getRole();
+    if (role !== "ADMIN") {
+      message("Administrators only", "PointCloud Manager is available to project administrators only.",
+        role ? `Your role in this project: ${role}` : "Your role in this project could not be determined.");
+      return;
+    }
+
+    const p = (await tc(`/projects/${enc(project.id)}`)).json || {};
+    rootId = p.rootId;
+    if (!rootId) throw new Error("The project root folder could not be found.");
+
+    clouds = await scanProject();
+    show("screenMain");
+    render();
+
+    await pool(clouds, 4, async c => { await loadDetails(c); render(); });
+  } catch (e) {
+    message("Something went wrong", errText(e));
+  }
+}
+
+/* =====================================================================
+   TABLE
+   ===================================================================== */
+const folderPath = id => { const f = folders.get(id); return f ? (f.path || "/") : ""; };
+function fmtDate(s) {
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }) + " " +
+         d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+}
+const urlCell = c => c.urlState === "ok" ? c.url : c.urlState === "loading" ? "Loading…" : "Could not be read";
+function sortValue(c) {
+  switch (sortKey) {
+    case "folder": return folderPath(c.folderId).toLowerCase();
+    case "uploader": return (c.uploader || "").toLowerCase();
+    case "date": return c.date || "";
+    case "url": return (c.url || "").toLowerCase();
+    default: return c.name.toLowerCase();
+  }
+}
+
+const CLOUD_ICON = '<svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96Z"/></svg>';
+
+function render() {
+  const q = query.trim().toLowerCase();
+  const list = clouds
+    .filter(c => !q || [c.name, folderPath(c.folderId), c.uploader, c.url].some(v => String(v || "").toLowerCase().includes(q)))
+    .sort((a, b) => { const x = sortValue(a), y = sortValue(b); return x < y ? -sortDir : x > y ? sortDir : 0; });
+
+  $("rows").innerHTML = list.map(c => `
+    <tr data-id="${esc(c.id)}" class="${c.id === selectedId ? "sel" : ""}">
+      <td class="name" title="${esc(c.name)}"><div class="cell">${CLOUD_ICON}<span>${esc(c.name)}</span></div></td>
+      <td title="${esc(folderPath(c.folderId))}">${esc(folderPath(c.folderId))}</td>
+      <td title="${esc(c.uploader)}">${esc(c.uploader)}</td>
+      <td>${esc(fmtDate(c.date))}</td>
+      <td class="${c.urlState === "ok" ? "" : "muted"}" title="${esc(urlCell(c))}">${esc(urlCell(c))}</td>
+    </tr>`).join("");
+
+  const n = clouds.length;
+  $("count").textContent = q ? `${list.length} of ${n} point clouds` : `${n} point cloud${n === 1 ? "" : "s"}`;
+  const empty = $("empty");
+  empty.classList.toggle("hidden", list.length > 0);
+  empty.textContent = n === 0 ? "No point clouds in this project yet. Use “Add PointCloud” to pin the first one."
+                              : "No point clouds match your search.";
+
+  document.querySelectorAll("th").forEach(th => {
+    const on = th.dataset.key === sortKey;
+    th.classList.toggle("active", on);
+    th.innerHTML = th.textContent.replace(/[↑↓]/g, "").trim() + (on ? `<span class="arr">${sortDir > 0 ? "↑" : "↓"}</span>` : "");
+  });
+
+  if (selectedId) fillPanel();
+}
+
+document.querySelector("thead").onclick = e => {
+  const th = e.target.closest("th");
+  if (!th) return;
+  if (sortKey === th.dataset.key) sortDir = -sortDir; else { sortKey = th.dataset.key; sortDir = 1; }
+  render();
+};
+$("rows").onclick = e => {
+  const tr = e.target.closest("tr");
+  if (tr) select(tr.dataset.id);
+};
+
+/* ---- search ---- */
+$("btnSearch").onclick = () => {
+  const box = $("search");
+  if (box.classList.contains("open") && !$("searchInput").value) { box.classList.remove("open"); return; }
+  box.classList.add("open");
+  $("searchInput").focus();
+};
+$("searchInput").oninput = e => { query = e.target.value; render(); };
+$("searchInput").onkeydown = e => {
+  if (e.key === "Escape") { e.target.value = ""; query = ""; $("search").classList.remove("open"); render(); }
+};
+
+/* =====================================================================
+   DETAILS PANEL
+   ===================================================================== */
+const selected = () => clouds.find(c => c.id === selectedId);
+
+function select(id) {
+  selectedId = id;
+  $("panel").classList.remove("hidden");
+  render();
+  loadNote(id);
+}
+function closePanel() {
+  selectedId = null;
+  $("panel").classList.add("hidden");
+  render();
+}
+$("pClose").onclick = closePanel;
+
+function fillPanel() {
+  const c = selected();
+  if (!c) { closePanel(); return; }
+  $("pName").textContent = c.name;
+  $("dName").textContent = c.name;
+  $("dFolder").textContent = folderPath(c.folderId);
+  $("dUploader").textContent = c.uploader || "—";
+  $("dDate").textContent = fmtDate(c.date) || "—";
+  $("dUrl").textContent = urlCell(c);
+}
+
+/* ---- note = one comment on the .purl file, marked with NOTE_PREFIX ---- */
+async function loadNote(fileId) {
+  note = { fileId, commentId: null, text: "" };
+  const ta = $("pNote");
+  ta.value = ""; ta.disabled = true;
+  $("pNoteSave").disabled = true;
+  $("noteStatus").textContent = "Loading…";
+  try {
+    const r = await tc(`/comments?objectId=${enc(fileId)}&objectType=FILE`);
+    if (note.fileId !== fileId) return;
+    const hit = listOf(r.json).find(c => String(c.description || "").startsWith(NOTE_PREFIX));
+    if (hit) { note.commentId = hit.id; note.text = String(hit.description).slice(NOTE_PREFIX.length); }
+    ta.value = note.text;
+    ta.disabled = false;
+    $("noteStatus").textContent = "";
+  } catch (e) {
+    if (note.fileId !== fileId) return;
+    $("noteStatus").textContent = "Note could not be loaded.";
+    toast(errText(e), true);
+  }
+}
+$("pNote").oninput = () => {
+  $("pNoteSave").disabled = $("pNote").value === note.text;
+  $("noteStatus").textContent = $("pNote").value === note.text ? "" : "Unsaved changes";
+};
+$("pNoteSave").onclick = async () => {
+  const fileId = note.fileId, text = $("pNote").value.trim();
+  $("pNoteSave").disabled = true;
+  $("noteStatus").textContent = "Saving…";
+  try {
+    if (!text && note.commentId) {
+      await tc(`/comments/${enc(note.commentId)}`, { method: "DELETE" });
+      note.commentId = null;
+    } else if (text && note.commentId) {
+      await tc(`/comments/${enc(note.commentId)}`, { method: "PATCH", body: { description: NOTE_PREFIX + text } });
+    } else if (text) {
+      const r = await tc(`/comments`, { method: "POST", body: { objectId: fileId, objectType: "FILE", description: NOTE_PREFIX + text } });
+      note.commentId = r.json?.id || null;
+    }
+    if (note.fileId !== fileId) return;
+    note.text = text;
+    $("pNote").value = text;
+    $("noteStatus").textContent = "Saved";
+  } catch (e) {
+    $("noteStatus").textContent = "Not saved";
+    $("pNoteSave").disabled = false;
+    toast(errText(e), true);
+  }
+};
+
+/* ---- remove ---- */
+$("pRemove").onclick = () => {
+  const c = selected();
+  if (!c) return;
+  $("rmText").textContent = `“${c.name}” will be removed from the project (file “${c.name}.purl” in ${folderPath(c.folderId)}).`;
+  openDialog("dlgRemove");
+};
+$("rmOk").onclick = async () => {
+  const c = selected();
+  if (!c) return;
+  $("rmOk").disabled = true;
+  try {
+    await tc(`/files/${enc(c.id)}`, { method: "DELETE" });
+    clouds = clouds.filter(x => x.id !== c.id);
+    closeDialog("dlgRemove");
+    closePanel();
+    toast(`“${c.name}” was removed.`);
+  } catch (e) {
+    toast(errText(e), true);
+  } finally {
+    $("rmOk").disabled = false;
+  }
+};
+
+/* =====================================================================
+   DIALOGS
+   ===================================================================== */
+function openDialog(id) { $(id).classList.remove("hidden"); }
+function closeDialog(id) { $(id).classList.add("hidden"); }
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => closeDialog(b.dataset.close));
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if (!$("dlgAdd").classList.contains("hidden")) closeDialog("dlgAdd");
+  else if (!$("dlgRemove").classList.contains("hidden")) closeDialog("dlgRemove");
+  else if (selectedId && document.activeElement !== $("searchInput")) closePanel();
+});
+
+/* =====================================================================
+   ADD POINTCLOUD
+   ===================================================================== */
+const NEW_FOLDER = "__new_default_folder__";
+let treeSel = null;
+const treeOpen = new Set();
+
+const FOLDER_ICON = '<svg class="fold" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2Z"/></svg>';
+const CHEVRON = '<svg viewBox="0 0 24 24"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6-6-6Z"/></svg>';
+
+function childrenOf(id) {
+  const kids = [...folders.values()].filter(f => f.parentId === id).sort((a, b) => a.name.localeCompare(b.name));
+  if (id === rootId && !defaultFolder()) kids.unshift({ id: NEW_FOLDER, name: DEFAULT_FOLDER, parentId: rootId, isNew: true });
+  return kids;
+}
+const defaultFolder = () => [...folders.values()].find(f => f.parentId === rootId && f.name.toLowerCase() === DEFAULT_FOLDER.toLowerCase());
+
+function renderTree() {
+  const rows = [];
+  const walk = (node, depth) => {
+    const kids = node.isNew ? [] : childrenOf(node.id);
+    const open = treeOpen.has(node.id);
+    rows.push(`<div class="t-row ${node.id === treeSel ? "sel" : ""}" data-id="${esc(node.id)}" style="padding-left:${6 + depth * 18}px">
+      <button type="button" class="t-tog ${kids.length ? (open ? "open" : "") : "none"}" data-tog="${esc(node.id)}">${CHEVRON}</button>
+      ${FOLDER_ICON}<span>${esc(node.id === rootId ? (project?.name || "Project") : node.name)}</span>
+      ${node.isNew ? '<span class="t-new">new</span>' : ""}
+    </div>`);
+    if (open) kids.forEach(k => walk(k, depth + 1));
+  };
+  walk(folders.get(rootId), 0);
+  $("aTree").innerHTML = rows.join("");
+}
+$("aTree").onclick = e => {
+  const tog = e.target.closest("[data-tog]");
+  if (tog) {
+    const id = tog.dataset.tog;
+    treeOpen.has(id) ? treeOpen.delete(id) : treeOpen.add(id);
+    renderTree();
+    return;
+  }
+  const row = e.target.closest(".t-row");
+  if (row) { treeSel = row.dataset.id; renderTree(); }
+};
+
+$("btnAdd").onclick = () => {
+  $("aName").value = ""; $("aUrl").value = ""; $("aError").textContent = "";
+  treeOpen.clear(); treeOpen.add(rootId);
+  treeSel = defaultFolder()?.id || NEW_FOLDER;
+  renderTree();
+  openDialog("dlgAdd");
+  $("aName").focus();
+};
+
+function validate(name, url, folderId) {
+  if (!name) return "Enter a name.";
+  if (/[\\/:*?"<>|]/.test(name)) return 'The name cannot contain any of these characters: \\ / : * ? " < > |';
+  if (/[. ]$/.test(name)) return "The name cannot end with a dot or a space.";
+  if (!url) return "Enter the URL of the point cloud.";
+  if (!/^https?:\/\/\S+$/i.test(url)) return "The URL must start with http:// or https:// and contain no spaces.";
+  if (!folderId) return "Select a folder.";
+  if (clouds.some(c => c.folderId === folderId && c.name.toLowerCase() === name.toLowerCase()))
+    return "A point cloud with this name already exists in the selected folder.";
+  const same = clouds.find(c => c.urlState === "ok" && c.url === url);
+  if (same) return `This URL is already pinned as “${same.name}” (${folderPath(same.folderId)}).`;
+  return "";
+}
+
+$("aAdd").onclick = async () => {
+  const name = $("aName").value.trim().replace(/\.purl$/i, "").trim();
+  const url = $("aUrl").value.trim();
+  const problem = validate(name, url, treeSel);
+  $("aError").textContent = problem;
+  if (problem) return;
+
+  $("aAdd").disabled = true;
+  $("aError").textContent = "";
+  try {
+    let folderId = treeSel;
+    if (folderId === NEW_FOLDER) {
+      const f = (await tc("/folders", { method: "POST", body: { name: DEFAULT_FOLDER, parentId: rootId } })).json || {};
+      if (!f.id) throw new Error("The folder “" + DEFAULT_FOLDER + "” could not be created.");
+      folders.set(String(f.id), { id: String(f.id), name: f.name || DEFAULT_FOLDER, parentId: rootId, path: f.name || DEFAULT_FOLDER });
+      folderId = String(f.id);
+    }
+
+    const fileId = await uploadPurl(folderId, name + ".purl", url);
+    const c = { id: fileId, name, folderId, uploader: me?.email || "", date: new Date().toISOString(), url, urlState: "ok" };
+    try {
+      const f = (await tc(`/files/${enc(fileId)}`)).json || {};
+      c.uploader = f.createdBy?.email || c.uploader;
+      c.date = f.createdOn || c.date;
+    } catch { /* keep local values */ }
+    clouds.push(c);
+    closeDialog("dlgAdd");
+    select(fileId);
+    toast(`“${name}” was added.`);
+  } catch (e) {
+    $("aError").textContent = errText(e);
+  } finally {
+    $("aAdd").disabled = false;
+  }
+};
+
+/* 3-step upload: initiate -> PUT to storage -> complete.
+   The file holds only the URL as plain text (no newline, no BOM), like the desktop app writes it. */
+async function uploadPurl(folderId, fileName, url) {
+  const init = (await tc(`/files/fs/upload?parentId=${enc(folderId)}&parentType=FOLDER`,
+                         { method: "POST", body: { name: fileName, contents: [{}] } })).json || {};
+  if (init.status === "DUPLICATE") throw new Error("Trimble Connect reports that an identical file already exists.");
+  const putUrl = init.contents?.[0]?.url;
+  if (!putUrl || !init.uploadId) throw new Error("The upload could not be started.");
+  const put = await fetch(putUrl, { method: "PUT", headers: { "Content-Type": "application/octet-stream" },
+                                    body: new Blob([url], { type: "application/octet-stream" }) });
+  if (!put.ok) throw new ApiError(put.status, "File upload", await put.text());
+  const done = (await tc(`/files/fs/upload?uploadId=${enc(init.uploadId)}&wait=true`)).json || {};
+  const fileId = done.fileId || done.id;
+  if (!fileId) throw new Error("The upload did not finish.");
+  return String(fileId);
+}
+
+start();
+</script>
+</body>
+</html>

@@ -87,6 +87,12 @@
   textarea { width: 100%; min-height: 110px; resize: vertical; margin-top: 10px; padding: 8px 10px; font: inherit; color: var(--text); background: var(--white); border: 1px solid var(--line-2); border-bottom-color: var(--text-3); }
   textarea:focus { outline: none; border-bottom: 2px solid var(--blue); }
   textarea:disabled { background: var(--hover); }
+  .field { width: 100%; padding: 7px 10px; font: inherit; color: var(--text); background: var(--white); border: 1px solid var(--line-2); border-bottom-color: var(--text-3); }
+  input.field { height: 36px; }
+  .field:focus { outline: none; border-bottom: 2px solid var(--blue); }
+  textarea.url-field { min-height: 0; margin-top: 0; resize: vertical; word-break: break-all; }
+  dt label { cursor: default; }
+  #pError { min-height: 0; }
   .note-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
   .note-status { font-size: 12px; color: var(--text-3); }
 
@@ -196,19 +202,20 @@
       <div class="p-section">
         <h3>Details</h3>
         <dl>
-          <dt>Name</dt><dd id="dName"></dd>
+          <dt><label for="eName">Name</label></dt><dd><input id="eName" class="field" type="text" autocomplete="off"></dd>
           <dt>Folder</dt><dd id="dFolder"></dd>
           <dt>Uploader</dt><dd id="dUploader"></dd>
           <dt>Upload date</dt><dd id="dDate"></dd>
-          <dt>URL</dt><dd id="dUrl" class="url"></dd>
+          <dt><label for="eUrl">URL</label></dt><dd><textarea id="eUrl" class="field url-field" rows="3" autocomplete="off"></textarea></dd>
         </dl>
       </div>
       <div class="p-section">
         <h3>Note</h3>
         <textarea id="pNote" placeholder="Add a note…" disabled></textarea>
+        <div id="pError" class="form-error"></div>
         <div class="note-row">
-          <span id="noteStatus" class="note-status"></span>
-          <button id="pNoteSave" class="btn-primary btn-sm" type="button" disabled>Save</button>
+          <span id="saveStatus" class="note-status"></span>
+          <button id="pSave" class="btn-primary" type="button" disabled>Save</button>
         </div>
       </div>
     </aside>
@@ -618,10 +625,14 @@ $("searchInput").onkeydown = e => {
    DETAILS PANEL
    ===================================================================== */
 const selected = () => clouds.find(c => c.id === selectedId);
+let edit = { id: null, name: "", url: "" };   // values currently stored in Trimble Connect
+let saving = false, saveMsg = "";
 
 function select(id) {
   selectedId = id;
+  saveMsg = "";
   $("panel").classList.remove("hidden");
+  fillPanel(true);
   render();
   loadNote(id);
 }
@@ -632,24 +643,48 @@ function closePanel() {
 }
 $("pClose").onclick = closePanel;
 
-function fillPanel() {
+const editName = () => $("eName").value.trim().replace(/\.purl$/i, "").trim();
+const editUrl  = () => $("eUrl").value.trim();
+const noteText = () => $("pNote").value.trim();
+const isDirty  = () => editName() !== edit.name || editUrl() !== edit.url ||
+                       (!$("pNote").disabled && noteText() !== note.text);
+
+function fillPanel(force = false) {
   const c = selected();
   if (!c) { closePanel(); return; }
   $("pName").textContent = c.name;
-  $("dName").textContent = c.name;
   $("dFolder").textContent = folderPath(c.folderId);
   $("dUploader").textContent = c.uploader || "—";
   $("dDate").textContent = fmtDate(c.date) || "—";
-  $("dUrl").textContent = urlCell(c);
+  const url = c.urlState === "ok" ? c.url : "";
+  if (force || edit.id !== c.id) {
+    edit = { id: c.id, name: c.name, url };
+    $("eName").value = c.name;
+    $("eUrl").value = url;
+    $("pError").textContent = "";
+  } else {
+    // refresh only fields the user has not touched
+    if (editName() === edit.name) { edit.name = c.name; $("eName").value = c.name; }
+    if (editUrl() === edit.url)   { edit.url = url;     $("eUrl").value = url; }
+  }
+  $("eUrl").placeholder = c.urlState === "loading" ? "Loading…" : c.urlState === "error" ? "Could not be read" : "";
+  updateSaveState();
 }
+
+function updateSaveState() {
+  const dirty = isDirty();
+  if (dirty) saveMsg = "";
+  $("pSave").disabled = saving || !dirty;
+  $("saveStatus").textContent = saving ? "Saving…" : dirty ? "Unsaved changes" : saveMsg;
+}
+for (const id of ["eName", "eUrl", "pNote"]) $(id).addEventListener("input", () => { $("pError").textContent = ""; updateSaveState(); });
 
 /* ---- note = one comment on the .purl file, marked with NOTE_PREFIX ---- */
 async function loadNote(fileId) {
   note = { fileId, commentId: null, text: "" };
   const ta = $("pNote");
-  ta.value = ""; ta.disabled = true;
-  $("pNoteSave").disabled = true;
-  $("noteStatus").textContent = "Loading…";
+  ta.value = ""; ta.disabled = true; ta.placeholder = "Loading…";
+  updateSaveState();
   try {
     const r = await tc(`/comments?objectId=${enc(fileId)}&objectType=FILE`);
     if (note.fileId !== fileId) return;
@@ -657,39 +692,73 @@ async function loadNote(fileId) {
     if (hit) { note.commentId = hit.id; note.text = String(hit.description).slice(NOTE_PREFIX.length); }
     ta.value = note.text;
     ta.disabled = false;
-    $("noteStatus").textContent = "";
+    ta.placeholder = "Add a note…";
   } catch (e) {
     if (note.fileId !== fileId) return;
-    $("noteStatus").textContent = "Note could not be loaded.";
+    ta.placeholder = "Note could not be loaded.";
     toast(errText(e), true);
   }
+  updateSaveState();
 }
-$("pNote").oninput = () => {
-  $("pNoteSave").disabled = $("pNote").value === note.text;
-  $("noteStatus").textContent = $("pNote").value === note.text ? "" : "Unsaved changes";
-};
-$("pNoteSave").onclick = async () => {
-  const fileId = note.fileId, text = $("pNote").value.trim();
-  $("pNoteSave").disabled = true;
-  $("noteStatus").textContent = "Saving…";
+
+async function saveNote(fileId, text) {
+  if (!text && note.commentId) {
+    await tc(`/comments/${enc(note.commentId)}`, { method: "DELETE" });
+    note.commentId = null;
+  } else if (text && note.commentId) {
+    await tc(`/comments/${enc(note.commentId)}`, { method: "PATCH", body: { description: NOTE_PREFIX + text } });
+  } else if (text) {
+    const r = await tc(`/comments`, { method: "POST", body: { objectId: fileId, objectType: "FILE", description: NOTE_PREFIX + text } });
+    note.commentId = r.json?.id || null;
+  }
+  note.fileId = fileId;
+  note.text = text;
+}
+
+/* New URL = new content of the .purl file. Uploaded as a new version of the same file;
+   if Trimble Connect creates a separate file instead, the note is moved and the old file removed. */
+async function replaceUrl(c, url) {
+  const fileName = edit.name + ".purl";
+  let newId;
+  try { newId = await uploadPurl(c.id, fileName, url, "FILE"); }
+  catch { newId = await uploadPurl(c.folderId, fileName, url, "FOLDER"); }
+  if (newId !== c.id) {
+    const oldId = c.id;
+    if (note.text) { note.commentId = null; await saveNote(newId, note.text); }
+    await tc(`/files/${enc(oldId)}`, { method: "DELETE" });
+    c.id = newId; selectedId = newId; edit.id = newId; note.fileId = newId;
+  }
+  c.url = url; c.urlState = "ok"; edit.url = url;
+}
+
+$("pSave").onclick = async () => {
+  const c = selected();
+  if (!c || saving) return;
+  const name = editName(), url = editUrl(), text = noteText();
+  const nameChanged = name !== edit.name;
+  const urlChanged  = url !== edit.url;
+  const noteChanged = !$("pNote").disabled && text !== note.text;
+  if (!nameChanged && !urlChanged && !noteChanged) return;
+
+  const problem = (nameChanged ? checkName(name, c.folderId, c.id) : "") || (urlChanged ? checkUrl(url, c.id) : "");
+  if (problem) { $("pError").textContent = problem; return; }
+
+  saving = true; $("pError").textContent = ""; updateSaveState();
   try {
-    if (!text && note.commentId) {
-      await tc(`/comments/${enc(note.commentId)}`, { method: "DELETE" });
-      note.commentId = null;
-    } else if (text && note.commentId) {
-      await tc(`/comments/${enc(note.commentId)}`, { method: "PATCH", body: { description: NOTE_PREFIX + text } });
-    } else if (text) {
-      const r = await tc(`/comments`, { method: "POST", body: { objectId: fileId, objectType: "FILE", description: NOTE_PREFIX + text } });
-      note.commentId = r.json?.id || null;
+    if (urlChanged) await replaceUrl(c, url);
+    if (nameChanged) {
+      await tc(`/files/${enc(c.id)}`, { method: "PATCH", body: { name: name + ".purl" } });
+      c.name = name; edit.name = name;
     }
-    if (note.fileId !== fileId) return;
-    note.text = text;
-    $("pNote").value = text;
-    $("noteStatus").textContent = "Saved";
+    if (noteChanged) await saveNote(c.id, text);
+    $("eName").value = edit.name; $("eUrl").value = edit.url; $("pNote").value = note.text;
+    saveMsg = "Saved";
   } catch (e) {
-    $("noteStatus").textContent = "Not saved";
-    $("pNoteSave").disabled = false;
-    toast(errText(e), true);
+    $("pError").textContent = errText(e);
+  } finally {
+    saving = false;
+    render();
+    updateSaveState();
   }
 };
 
@@ -727,7 +796,7 @@ document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (!$("dlgAdd").classList.contains("hidden")) closeDialog("dlgAdd");
   else if (!$("dlgRemove").classList.contains("hidden")) closeDialog("dlgRemove");
-  else if (selectedId && document.activeElement !== $("searchInput")) closePanel();
+  else if (selectedId && document.activeElement !== $("searchInput") && !isDirty()) closePanel();
 });
 
 /* =====================================================================
@@ -783,18 +852,24 @@ $("btnAdd").onclick = () => {
   $("aName").focus();
 };
 
-function validate(name, url, folderId) {
+function checkName(name, folderId, exceptId = null) {
   if (!name) return "Enter a name.";
   if (/[\\/:*?"<>|]/.test(name)) return 'The name cannot contain any of these characters: \\ / : * ? " < > |';
   if (/[. ]$/.test(name)) return "The name cannot end with a dot or a space.";
+  if (clouds.some(c => c.id !== exceptId && c.folderId === folderId && c.name.toLowerCase() === name.toLowerCase()))
+    return "A point cloud with this name already exists in this folder.";
+  return "";
+}
+function checkUrl(url, exceptId = null) {
   if (!url) return "Enter the URL of the point cloud.";
   if (!/^https?:\/\/\S+$/i.test(url)) return "The URL must start with http:// or https:// and contain no spaces.";
-  if (!folderId) return "Select a folder.";
-  if (clouds.some(c => c.folderId === folderId && c.name.toLowerCase() === name.toLowerCase()))
-    return "A point cloud with this name already exists in the selected folder.";
-  const same = clouds.find(c => c.urlState === "ok" && c.url === url);
+  const same = clouds.find(c => c.id !== exceptId && c.urlState === "ok" && c.url === url);
   if (same) return `This URL is already pinned as “${same.name}” (${folderPath(same.folderId)}).`;
   return "";
+}
+function validate(name, url, folderId) {
+  if (!folderId) return "Select a folder.";
+  return checkName(name, folderId) || checkUrl(url);
 }
 
 $("aAdd").onclick = async () => {
@@ -835,8 +910,8 @@ $("aAdd").onclick = async () => {
 
 /* 3-step upload: initiate -> PUT to storage -> complete.
    The file holds only the URL as plain text (no newline, no BOM), like the desktop app writes it. */
-async function uploadPurl(folderId, fileName, url) {
-  const init = (await tc(`/files/fs/upload?parentId=${enc(folderId)}&parentType=FOLDER`,
+async function uploadPurl(parentId, fileName, url, parentType = "FOLDER") {
+  const init = (await tc(`/files/fs/upload?parentId=${enc(parentId)}&parentType=${parentType}`,
                          { method: "POST", body: { name: fileName, contents: [{}] } })).json || {};
   if (init.status === "DUPLICATE") throw new Error("Trimble Connect reports that an identical file already exists.");
   const putUrl = init.contents?.[0]?.url;

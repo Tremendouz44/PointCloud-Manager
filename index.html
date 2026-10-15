@@ -92,7 +92,8 @@
   .field:focus { outline: none; border-bottom: 2px solid var(--blue); }
   textarea.url-field { min-height: 0; margin-top: 0; resize: vertical; word-break: break-all; }
   dt label { cursor: default; }
-  #pError { min-height: 0; }
+  #pError { min-height: 0; margin-top: 0; }
+  textarea.note-field { margin-top: 0; min-height: 96px; }
   .note-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
   .note-status { font-size: 12px; color: var(--text-3); }
 
@@ -201,17 +202,16 @@
         <h3>Details</h3>
         <dl>
           <dt><label for="eName">Name</label></dt><dd><input id="eName" class="field" type="text" autocomplete="off"></dd>
+          <dt><label for="eUrl">URL</label></dt><dd><textarea id="eUrl" class="field url-field" rows="3" autocomplete="off"></textarea></dd>
+          <dt><label for="pNote">Note</label></dt><dd><textarea id="pNote" class="note-field" placeholder="Add a note…" disabled></textarea></dd>
           <dt>Folder</dt><dd id="dFolder"></dd>
           <dt>Uploader</dt><dd id="dUploader"></dd>
           <dt>Upload date</dt><dd id="dDate"></dd>
           <dt>Last modified</dt><dd id="dModified"></dd>
           <dt>Modified by</dt><dd id="dModifiedBy"></dd>
-          <dt><label for="eUrl">URL</label></dt><dd><textarea id="eUrl" class="field url-field" rows="3" autocomplete="off"></textarea></dd>
         </dl>
       </div>
       <div class="p-section">
-        <h3>Note</h3>
-        <textarea id="pNote" placeholder="Add a note…" disabled></textarea>
         <div id="pError" class="form-error"></div>
         <div class="note-row">
           <span id="saveStatus" class="note-status"></span>
